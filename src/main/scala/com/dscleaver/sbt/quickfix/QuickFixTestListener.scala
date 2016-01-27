@@ -1,13 +1,16 @@
 package com.dscleaver.sbt.quickfix
 
+import scala.reflect.runtime.{ universe => ru }
+import scala.language.reflectiveCalls
+
+import com.dscleaver.sbt.Neovim
 import sbt._
 import sbt.TestResult.Value
 import sbt.testing.Status._
 import sbt.testing.Event
 
-class QuickFixTestListener(output: File, srcFiles: => Seq[File], vimExec: String, enableServer: Boolean) extends TestReportListener {
+class QuickFixTestListener(output: File, srcFiles: => Seq[File], addr: Option[String], port: Option[Int]) extends TestReportListener {
   import QuickFixLogger._
-  import VimInteraction._
 
   type TFE = Exception {
     def failedCodeFileName: Option[String]
@@ -21,8 +24,14 @@ class QuickFixTestListener(output: File, srcFiles: => Seq[File], vimExec: String
 
   def testEvent(event: TestEvent): Unit = {
     writeFailure(event)
-    if (enableServer && event.detail.exists(e => e.status == Failure)) {
-      call(vimExec, "<esc>:cfile %s<cr>".format(output.toString))
+
+    addr.zip(port).foreach { case (a, p) =>
+      if (event.detail.exists(e => e.status == Failure)) {
+        Neovim.connect(a, p) { neovim =>
+          neovim.setScalaErrorFormat()
+          neovim.setErrorFile(output.toString)
+        }
+      }
     }
   }
  
@@ -40,17 +49,20 @@ class QuickFixTestListener(output: File, srcFiles: => Seq[File], vimExec: String
   def writeable(detail: Event): Boolean =
     detail.status == Failure && detail.throwable.isDefined
 
+  type E = { def failedCodeStackDepth: Int }
+
   def find(error: Throwable): Option[(File, Int)] = error match {
-    case e: { def failedCodeStackDepth: Int } => 
+    case e: E =>
       try {
         val stackTrace = error.getStackTrace()(e.failedCodeStackDepth)
         for { 
           file <- findSource(stackTrace.getFileName) 
         } yield (file, stackTrace.getLineNumber)
       } catch {
-        case _ => 
+        case _: Throwable => 
           findInStackTrace(error.getStackTrace)
       }
+    case _ => findInStackTrace(error.getStackTrace)
   }
 
   def findInStackTrace(trace: Array[StackTraceElement]): Option[(File, Int)] = 
@@ -64,6 +76,6 @@ class QuickFixTestListener(output: File, srcFiles: => Seq[File], vimExec: String
 }
 
 object QuickFixTestListener {
-  def apply(output: File, srcFiles: Seq[File], vimExec: String, enableServer: Boolean): TestReportListener =
-    new QuickFixTestListener(output, srcFiles, vimExec, enableServer)
+  def apply(output: File, srcFiles: Seq[File], addr: Option[String], port: Option[Int]): TestReportListener =
+    new QuickFixTestListener(output, srcFiles, addr, port)
 }

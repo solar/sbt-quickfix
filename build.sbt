@@ -1,23 +1,20 @@
 sbtPlugin := true
 
-name := "sbt-quickfix"
+name := "sbt-quickfix-nvim"
 
 organization := "com.dscleaver.sbt"
 
 versionWithGit
 
-//version := "0.4.1-LOCAL"
+version := "0.5.0"
 
-git.baseVersion := "0.4.1"
-
-resolvers += "sonatype-releases" at "https://oss.sonatype.org/service/local/repositories/releases/content/"
-
-scalacOptions += "-unchecked"
+scalacOptions ++= Seq("-feature", "-unchecked", "-deprecation")
 
 publishMavenStyle := false
 
 libraryDependencies ++= Seq(
-  "org.scalatest" %% "scalatest" % "2.0" % "provided"
+  "org.msgpack" % "msgpack-core" % "0.8.2",
+  "org.scalatest" %% "scalatest" % "2.2.6" % "test"
 )
 
 publishTo <<= (version) { v =>

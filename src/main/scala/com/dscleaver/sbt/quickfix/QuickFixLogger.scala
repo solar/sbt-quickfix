@@ -1,5 +1,6 @@
 package com.dscleaver.sbt.quickfix
 
+import com.dscleaver.sbt.Neovim
 import sbt._
 
 object QuickFixLogger {
@@ -10,9 +11,8 @@ object QuickFixLogger {
     append(output, prefix, "%s:%d: %s".format(file, line, message))
 }
 
-class QuickFixLogger(val output: File, vimExec: String, enableServer: Boolean) extends BasicLogger {
+class QuickFixLogger(val output: File, addr: Option[String], port: Option[Int]) extends BasicLogger {
   import QuickFixLogger._
-  import VimInteraction._
 
   def log(level: Level.Value, message: => String): Unit = level match {
     case Level.Info => handleInfoMessage(message)
@@ -21,13 +21,19 @@ class QuickFixLogger(val output: File, vimExec: String, enableServer: Boolean) e
     case _ => handleDebugMessage(message)
   }
 
-  def handleDebugMessage(message: String) =
-    if (enableServer && message.toLowerCase.contains("compilation failed")) {
-      call(vimExec, "<esc>:cfile %s<cr>".format(output.toString))
+  def handleDebugMessage(message: String) = {
+    addr.zip(port).foreach { case (a, p) =>
+      if (message.toLowerCase.contains("compilation failed")) {
+        Neovim.connect(a, p) { neovim =>
+          neovim.setScalaErrorFormat()
+          neovim.setErrorFile(output.toString)
+        }
+      }
     }
+  }
 
   def handleInfoMessage(message: String) = {
-    if(message startsWith "Compiling") {
+    if (message startsWith "Compiling") {
       IO.delete(output)
       IO.touch(List(output))
     } else ()
@@ -44,5 +50,4 @@ class QuickFixLogger(val output: File, vimExec: String, enableServer: Boolean) e
   def success(message: => String): Unit = ()
 
   def trace(t: => Throwable): Unit = ()
-
 }
